@@ -799,6 +799,39 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
     }
   }
 
+  // POST /oauth/register — programmatic client registration for multi-user apps.
+  // Auth: Authorization: Bearer <bootstrapToken>. No cookie/session required.
+  // Body: { client_name, grant_types?, scope? }
+  // Returns: { client_id, client_secret }
+  app.post('/oauth/register', express.json(), async (req: Request, res: Response) => {
+    const auth = (req.headers.authorization || '') as string;
+    const m = auth.match(/^Bearer\s+(\S+)$/i);
+    if (!m) {
+      res.status(401).json({ error: 'Authorization: Bearer <admin-token> required' });
+      return;
+    }
+    const tokenHash = createHash('sha256').update(m[1]).digest('hex');
+    if (!safeHexEqual(tokenHash, bootstrapHash)) {
+      res.status(401).json({ error: 'Invalid admin token' });
+      return;
+    }
+    try {
+      const { client_name, grant_types, scope } = req.body;
+      if (!client_name || typeof client_name !== 'string') {
+        res.status(400).json({ error: 'client_name required' });
+        return;
+      }
+      const grants = Array.isArray(grant_types) && grant_types.length > 0 ? grant_types : ['client_credentials'];
+      const scopeString = typeof scope === 'string' ? scope : 'read write';
+      const result = await oauthProvider.registerClientManual(
+        client_name, grants, scopeString, [], 'default', undefined, undefined,
+      );
+      res.status(201).json({ client_id: result.clientId, client_secret: result.clientSecret });
+    } catch (e) {
+      res.status(500).json({ error: e instanceof Error ? e.message : 'Registration failed' });
+    }
+  });
+
   // POST /admin/api/issue-magic-link — agent-callable mint endpoint.
   // Auth: Authorization: Bearer <bootstrapToken>. Returns one-time nonce.
   app.post('/admin/api/issue-magic-link', express.json(), (req: Request, res: Response) => {
