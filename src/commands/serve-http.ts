@@ -816,17 +816,29 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
       return;
     }
     try {
-      const { client_name, grant_types, scope } = req.body;
+      const { client_name, grant_types, scope, source_id } = req.body;
       if (!client_name || typeof client_name !== 'string') {
         res.status(400).json({ error: 'client_name required' });
         return;
       }
       const grants = Array.isArray(grant_types) && grant_types.length > 0 ? grant_types : ['client_credentials'];
       const scopeString = typeof scope === 'string' ? scope : 'read write';
+
+      // Per-user source isolation: create a dedicated source for this client
+      // if source_id is provided. Admin-level operation (bootstrap token already verified).
+      let resolvedSourceId = 'default';
+      if (source_id && typeof source_id === 'string') {
+        const existing = await sql`SELECT id FROM sources WHERE id = ${source_id}`;
+        if (existing.length === 0) {
+          await sql`INSERT INTO sources (id, name, federated) VALUES (${source_id}, ${source_id}, false)`;
+        }
+        resolvedSourceId = source_id;
+      }
+
       const result = await oauthProvider.registerClientManual(
-        client_name, grants, scopeString, [], 'default', undefined, undefined,
+        client_name, grants, scopeString, [], resolvedSourceId, undefined, undefined,
       );
-      res.status(201).json({ client_id: result.clientId, client_secret: result.clientSecret });
+      res.status(201).json({ client_id: result.clientId, client_secret: result.clientSecret, source_id: resolvedSourceId });
     } catch (e) {
       res.status(500).json({ error: e instanceof Error ? e.message : 'Registration failed' });
     }
