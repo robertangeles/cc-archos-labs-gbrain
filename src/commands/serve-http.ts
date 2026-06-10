@@ -830,7 +830,7 @@ export async function runServeHttp(engine: BrainEngine, options: ServeHttpOption
       if (source_id && typeof source_id === 'string') {
         const existing = await sql`SELECT id FROM sources WHERE id = ${source_id}`;
         if (existing.length === 0) {
-          await sql`INSERT INTO sources (id, name, federated) VALUES (${source_id}, ${source_id}, false)`;
+          await sql`INSERT INTO sources (id, name) VALUES (${source_id}, ${source_id})`;
         }
         resolvedSourceId = source_id;
       }
